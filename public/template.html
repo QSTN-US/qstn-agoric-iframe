@@ -55,7 +55,11 @@
     </style>
   </head>
   <body>
-    <!-- Load from jsDelivr CDN for guaranteed availability -->
-    <script src="https://cdn.jsdelivr.net/gh/JoE11-y/agoric-iframe@v1.0.2/dist/agoric-sandbox.6daa5ce210e697231bf8.js"></script>
+    <div id="status" class="loading hidden">Initializing Agoric Sandbox...</div>
+    <div class="info hidden">
+      <h2>Agoric Sandbox</h2>
+      <p>This iframe provides isolated Agoric blockchain integration.</p>
+      <p id="wallet-status">Wallet: Not connected</p>
+    </div>
   </body>
 </html>
