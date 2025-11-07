@@ -28,7 +28,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: './public/template.html',
       filename: 'agoric-sandbox.html',
-      inject: 'body',
+      inject: false, // Don't inject script tag, we're doing it manually in template
       minify: {
         removeComments: true,
         collapseWhitespace: true,
