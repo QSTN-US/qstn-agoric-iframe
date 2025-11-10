@@ -22,6 +22,7 @@ import {
   makeAgoricChainStorageWatcher,
   AgoricChainStoragePathKind as Kind,
 } from "@agoric/rpc";
+import { makeSignDoc } from "@cosmjs/amino";
 
 // Make Buffer available globally for Agoric packages
 globalThis.Buffer = Buffer;
@@ -48,16 +49,16 @@ const CONFIG = {
 };
 
 // Brands
-  const BLD = {
-    brandKey: 'BLD',
-    decimals: 6,
-  };
-  
+const BLD = {
+  brandKey: "BLD",
+  decimals: 6,
+};
 
 // Global state
 const state = {
   watcher: null,
   wallet: null,
+  account: null,
   currentWalletRecord: null,
   brands: null,
   contractInstance: null,
@@ -116,7 +117,7 @@ function createWatcherHandlers(watcher) {
           console.log("[Agoric Sandbox] Got installations:", installations);
           // Find qstnContract installation
           state.contractInstallation = installations.find(
-            ([name]) => name === "qstnContract"
+            ([name]) => name === "qstnRouterV2"
           )?.[1];
 
           console.log(
@@ -213,7 +214,18 @@ async function connectWallet() {
 
     state.wallet = wallet;
 
+    const account = await wallet.signingClient.getAccount();
+
+    if (!account) {
+      throw new Error("Failed to retrieve account from wallet");
+    }
+
+    state.account = account;
+
+    console.log("[Agoric Sandbox] Wallet account pubkey:", account.pubkey);
+
     console.log("[Agoric Sandbox] Wallet connected:", wallet.address);
+
     updateStatus(`Connected: ${wallet.address.slice(0, 12)}...`, "success");
     updateWalletStatus(
       `${wallet.address.slice(0, 12)}...${wallet.address.slice(-6)}`
@@ -336,31 +348,69 @@ async function makeOffer({ invitationSpec, proposal, offerArgs = {} }) {
     }
   });
 }
+async function makeADR036AminoDoc(message, signerAddr, chainId) {
+  return makeSignDoc(
+    [
+      {
+        type: "sign/MsgSignData",
+        value: {
+          signer: signerAddr,
+          data: Buffer.from(message).toString("base64"),
+        },
+      },
+    ],
+    { gas: "0", amount: [] },
+    chainId,
+    undefined,
+    0,
+    0
+  );
+}
 
 /**
- * Create Account Invitation
+ * Sign data with wallet
+ * @param {Object} params
+ * @param {string} params.payload - Data to sign
+ * @returns {Promise<{signedData: Object, pubKey: Object, signature: string}>} Signed data with pub key and signature
  */
-
-async function createAccountAction(){
+async function signData({ payload }) {
   try {
-    console.log("[Agoric Sandbox] Creating account invitation...");
-    updateStatus("Creating account invitation...", "loading");
+    console.log("[Agoric Sandbox] Signing data:", payload);
+    updateStatus("Signing data...", "loading");
 
-    // Get brand
-    const brand = state.brands?.["BLD"];
-    if (!brand) {
-      throw new Error("BLD brand not found");
+    const { keplr } = window;
+
+    if (!keplr) {
+      throw new Error("Keplr wallet not found");
     }
 
-    const give = {
-      []
+    // Ensure wallet is connected
+    if (!state.wallet) {
+      await connectWallet();
+      watchWallet();
     }
 
+    const signDoc = await makeADR036AminoDoc(
+      payload,
+      state.wallet.address,
+      CONFIG.CHAIN_ID
+    );
 
-  }catch (error) {
-    console.error("[Agoric Sandbox] Create account invitation failed:", error);
-    updateStatus(`Transaction failed: ${error.message}`, "error");
-    throw error;
+    const signResponse = await keplr.signAmino(
+      CONFIG.CHAIN_ID,
+      state.wallet.address,
+      signDoc
+    );
+
+    return {
+      signedData: signResponse.signed,
+      pubKey: state.account.pubKey,
+      signature: signResponse.signature,
+    };
+  } catch (error) {
+    console.error("[Agoric Sandbox] Data signing failed:", error);
+    updateStatus(`Signing failed: ${error.message}`, "error");
+    throw { code: "SIGNING_FAILED", message: error.message };
   }
 }
 
@@ -369,11 +419,11 @@ async function createAccountAction(){
  *
  * TODO: Replace with your actual contract interaction
  */
-async function fundSurvey({ surveyId, amount, denom }) {
+async function fundSurvey({ surveyId, messages, denom, totalAmount }) {
   try {
     console.log("[Agoric Sandbox] Funding survey:", {
       surveyId,
-      amount,
+      totalAmount,
       denom,
     });
     updateStatus(`Funding survey ${surveyId}...`, "loading");
@@ -402,8 +452,8 @@ async function fundSurvey({ surveyId, amount, denom }) {
     // TODO: Replace with your actual contract invitation spec
     const invitationSpec = {
       source: "contract",
-      instance: state.contractInstance,
-      publicInvitationMaker: "makeFundSurveyInvitation",
+      instance: state.contractInstallation || state.contractInstance,
+      publicInvitationMaker: "makeSendTransactionInvitation",
     };
 
     // Create proposal with Amount
@@ -411,7 +461,7 @@ async function fundSurvey({ surveyId, amount, denom }) {
       give: {
         Payment: {
           brand,
-          value: BigInt(amount),
+          value: BigInt(totalAmount),
         },
       },
       want: {},
@@ -419,7 +469,7 @@ async function fundSurvey({ surveyId, amount, denom }) {
 
     // Contract-specific arguments
     const offerArgs = {
-      surveyId,
+      messages,
     };
 
     // Make the offer
@@ -463,9 +513,12 @@ async function fundSurvey({ surveyId, amount, denom }) {
  *
  * TODO: Replace with your actual contract interaction
  */
-async function claimRewards({ surveyId, userId }) {
+async function claimRewards({ surveyId, messages, denom, totalAmount }) {
   try {
-    console.log("[Agoric Sandbox] Claiming rewards:", { surveyId, userId });
+    console.log("[Agoric Sandbox] Claiming rewards:", {
+      surveyId,
+      totalAmount,
+    });
     updateStatus(`Claiming rewards for survey ${surveyId}...`, "loading");
 
     // Ensure wallet is connected
@@ -474,21 +527,38 @@ async function claimRewards({ surveyId, userId }) {
       watchWallet();
     }
 
+    // Get brand for the token
+    const brandKey =
+      denom.toUpperCase() === "UBLD" ? "BLD" : denom.toUpperCase();
+    const brand = state.brands?.[brandKey];
+
+    if (!brand) {
+      throw new Error(
+        `Brand not found for ${brandKey}. Available brands: ${Object.keys(
+          state.brands || {}
+        ).join(", ")}`
+      );
+    }
+
     // TODO: Implement your actual claim rewards contract interaction
     const invitationSpec = {
       source: "contract",
-      instance: state.contractInstance,
+      instance: state.contractInstallation || state.contractInstance,
       publicInvitationMaker: "makeClaimRewardsInvitation",
     };
 
     const proposal = {
-      give: {},
+      give: {
+        Payment: {
+          brand,
+          value: BigInt(totalAmount),
+        },
+      },
       want: {},
     };
 
     const offerArgs = {
-      surveyId,
-      userId,
+      messages,
     };
 
     const result = await makeOffer({
@@ -583,6 +653,10 @@ window.addEventListener("message", async (event) => {
       case "CONNECT_WALLET":
         result = await connectWallet();
         watchWallet();
+        break;
+
+      case "SIGN_DATA":
+        result = await signData(data);
         break;
 
       case "FUND_SURVEY":

@@ -1449,6 +1449,16 @@
     "@cosmjs/math" "^0.36.2"
     "@cosmjs/utils" "^0.36.2"
 
+"@cosmjs/amino@^0.37.0":
+  version "0.37.0"
+  resolved "https://registry.yarnpkg.com/@cosmjs/amino/-/amino-0.37.0.tgz#34705c53348761a06c984255f4d426f888dea428"
+  integrity sha512-Qjg3vx0V907ICYr9wTFuF55+P2F7FuVuVdV8WsBJC6G9ekS5nbi7Z4+YsoJf3JEp5WApVgcX3HmAWZhziayxzw==
+  dependencies:
+    "@cosmjs/crypto" "^0.37.0"
+    "@cosmjs/encoding" "^0.37.0"
+    "@cosmjs/math" "^0.37.0"
+    "@cosmjs/utils" "^0.37.0"
+
 "@cosmjs/cosmwasm-stargate@^0.30.0":
   version "0.30.1"
   resolved "https://registry.yarnpkg.com/@cosmjs/cosmwasm-stargate/-/cosmwasm-stargate-0.30.1.tgz#6f9ca310f75433a3e30d683bc6aa24eadb345d79"
@@ -1505,6 +1515,20 @@
     "@noble/hashes" "^1.8.0"
     hash-wasm "^4.12.0"
 
+"@cosmjs/crypto@^0.37.0":
+  version "0.37.0"
+  resolved "https://registry.yarnpkg.com/@cosmjs/crypto/-/crypto-0.37.0.tgz#e0b4f47c958ed48e9388cc9f7dc8fd7449dc2887"
+  integrity sha512-rjnU7SEgNTUQAUotG686m7ahYSWgHh3J6n2JXoWoHJz0uVv4o4P+pbAFklyQ1PcPIR7u6LezCKDB5tP5Y5PeYQ==
+  dependencies:
+    "@cosmjs/encoding" "^0.37.0"
+    "@cosmjs/math" "^0.37.0"
+    "@cosmjs/utils" "^0.37.0"
+    "@noble/ciphers" "^1.3.0"
+    "@noble/curves" "^1.9.2"
+    "@noble/hashes" "^1.8.0"
+    "@scure/bip39" "^1.6.0"
+    hash-wasm "^4.12.0"
+
 "@cosmjs/encoding@^0.30.0", "@cosmjs/encoding@^0.30.1":
   version "0.30.1"
   resolved "https://registry.yarnpkg.com/@cosmjs/encoding/-/encoding-0.30.1.tgz#b5c4e0ef7ceb1f2753688eb96400ed70f35c6058"
@@ -1530,6 +1554,15 @@
   dependencies:
     base64-js "^1.3.0"
     bech32 "^1.1.4"
+    readonly-date "^1.0.0"
+
+"@cosmjs/encoding@^0.37.0":
+  version "0.37.0"
+  resolved "https://registry.yarnpkg.com/@cosmjs/encoding/-/encoding-0.37.0.tgz#6b51f97fedc984a44bf46684dff735e427d4bcda"
+  integrity sha512-xtdC0w+iVFOrod9a5RLJULUECv+6AvZr5FkD8AFr2vD853n7Z89/AVuEiJzd4GdUwlPzxcaamhAtmI+IB9DYvg==
+  dependencies:
+    "@scure/base" "^2.0.0"
+    base64-js "^1.3.0"
     readonly-date "^1.0.0"
 
 "@cosmjs/faucet-client@^0.30.0":
@@ -1581,6 +1614,11 @@
   version "0.36.2"
   resolved "https://registry.yarnpkg.com/@cosmjs/math/-/math-0.36.2.tgz#94293cbdd86614b7a91f93d9c9dd3303dc5a964a"
   integrity sha512-uJZRzxqnBk3MgxFgeyUwLgUzWkAIcmznWSB/tgGCjGCnUNebzI+44dA3ncEDCMqQysi/MZ+cSwAcDU7IY2PFeA==
+
+"@cosmjs/math@^0.37.0":
+  version "0.37.0"
+  resolved "https://registry.yarnpkg.com/@cosmjs/math/-/math-0.37.0.tgz#63d82d93596fcd3bd9b834b2081fd203dc4952e7"
+  integrity sha512-FI+Tq8mhW0tuDawRvPdyX3K7qDZD2v1keRhiK/zHisvtQVzqoRRoOS1g5P9Pc7gWLQ1jPS15gDMYBu5+UYJ1+g==
 
 "@cosmjs/proto-signing@^0.30.0", "@cosmjs/proto-signing@^0.30.1":
   version "0.30.1"
@@ -1777,6 +1815,11 @@
   version "0.36.2"
   resolved "https://registry.yarnpkg.com/@cosmjs/utils/-/utils-0.36.2.tgz#a688deb0cd6d8db63d22066173e6066086fd488b"
   integrity sha512-OOr2HU/Ph+/GI1Fx2UCf3LOyX9YTCP51d2HitTOjjEJRYnkfKXP3lMBl1FZo5QaFWxnfuBc+Cj+cSoiQUJRyzQ==
+
+"@cosmjs/utils@^0.37.0":
+  version "0.37.0"
+  resolved "https://registry.yarnpkg.com/@cosmjs/utils/-/utils-0.37.0.tgz#40b156bf89bf11e91eb1401655665ee827687a11"
+  integrity sha512-j46yZg+cLBpANGc5sCxtQHJgPGBt5zSKlU+KX9FlDS6JU6q2vZYCpKgucFFpjekEiMagU1eu8cDSCRjTthEM6w==
 
 "@dabh/diagnostics@^2.0.2":
   version "2.0.8"
@@ -2430,7 +2473,7 @@
   dependencies:
     "@noble/hashes" "1.8.0"
 
-"@noble/hashes@1.8.0", "@noble/hashes@^1", "@noble/hashes@^1.0.0", "@noble/hashes@^1.8.0":
+"@noble/hashes@1.8.0", "@noble/hashes@^1", "@noble/hashes@^1.0.0", "@noble/hashes@^1.8.0", "@noble/hashes@~1.8.0":
   version "1.8.0"
   resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-1.8.0.tgz#cee43d801fcef9644b11b8194857695acd5f815a"
   integrity sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==
@@ -2538,6 +2581,24 @@
     "@types/estree" "0.0.39"
     estree-walker "^1.0.1"
     picomatch "^2.2.2"
+
+"@scure/base@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@scure/base/-/base-2.0.0.tgz#ba6371fddf92c2727e88ad6ab485db6e624f9a98"
+  integrity sha512-3E1kpuZginKkek01ovG8krQ0Z44E3DHPjc5S2rjJw9lZn3KSQOs8S7wqikF/AH7iRanHypj85uGyxk0XAyC37w==
+
+"@scure/base@~1.2.5":
+  version "1.2.6"
+  resolved "https://registry.yarnpkg.com/@scure/base/-/base-1.2.6.tgz#ca917184b8231394dd8847509c67a0be522e59f6"
+  integrity sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg==
+
+"@scure/bip39@^1.6.0":
+  version "1.6.0"
+  resolved "https://registry.yarnpkg.com/@scure/bip39/-/bip39-1.6.0.tgz#475970ace440d7be87a6086cbee77cb8f1a684f9"
+  integrity sha512-+lF0BbLiJNwVlev4eKelw1WWLaiKXw7sSl8T6FvBlWkdX+94aGJ4o8XjUdlyhTCjd8c+B3KT3JfS8P0bLRNU6A==
+  dependencies:
+    "@noble/hashes" "~1.8.0"
+    "@scure/base" "~1.2.5"
 
 "@so-ric/colorspace@^1.1.6":
   version "1.1.6"
@@ -3986,7 +4047,7 @@ eslint-scope@5.1.1:
     esrecurse "^4.3.0"
     estraverse "^4.1.1"
 
-"esm@github:agoric-labs/esm#Agoric-built":
+esm@agoric-labs/esm#Agoric-built:
   version "3.2.25"
   resolved "https://codeload.github.com/agoric-labs/esm/tar.gz/3603726ad4636b2f865f463188fcaade6375638e"
 
