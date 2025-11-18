@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const fs = require('fs');
+const CopyPlugin = require('copy-webpack-plugin');
 
 // Custom plugin to inline JavaScript into HTML
 class InlineScriptPlugin {
@@ -75,6 +76,11 @@ module.exports = {
       inject: 'body',
       scriptLoading: 'blocking',
       minify: false, // Disable minify for debugging
+    }),
+    new CopyPlugin({
+      patterns: [
+        { from: 'public/index.html', to: 'index.html' },
+      ],
     }),
     // InlineScriptPlugin disabled for local dev - enable only for CDN deployment
     // new InlineScriptPlugin(),
