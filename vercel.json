@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
+  "buildCommand": "yarn build",
   "outputDirectory": "dist",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
+  "devCommand": "yarn dev",
+  "installCommand": "yarn install",
   "framework": null,
   "public": false,
   "regions": ["iad1"],
