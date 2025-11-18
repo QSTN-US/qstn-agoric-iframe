@@ -255,6 +255,38 @@ function watchWallet() {
 }
 
 /**
+ * Extract error message from various error formats
+ */
+function getErrorMessage(error) {
+  // Handle Error objects
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  // Handle error objects with message property
+  if (error && typeof error === "object" && "message" in error) {
+    return error.message;
+  }
+
+  // Handle string errors
+  if (typeof error === "string") {
+    return error;
+  }
+
+  // Try to stringify as last resort, but handle circular references
+  try {
+    const stringified = JSON.stringify(error);
+    // Don't return empty object or null
+    if (stringified === "{}" || stringified === "null") {
+      return String(error);
+    }
+    return stringified;
+  } catch (e) {
+    return String(error);
+  }
+}
+
+/**
  * Make an offer using the smart wallet
  *
  * NOTE: This is the core function for interacting with Agoric smart contracts
@@ -287,8 +319,8 @@ async function makeOffer({ invitationSpec, proposal, offerArgs = {} }) {
 
         switch (update.status) {
           case "error": {
-            const errorMsg = `Offer error: ${JSON.stringify(update.data)}`;
-            console.error("[Agoric Sandbox]", errorMsg);
+            const errorMsg = getErrorMessage(update.data);
+            console.error("[Agoric Sandbox] Offer error:", errorMsg);
             reject(new Error(errorMsg));
             break;
           }
@@ -453,23 +485,10 @@ async function fundSurvey({ surveyId, messages, denom, totalAmount }) {
     };
   } catch (error) {
     console.error("[Agoric Sandbox] Fund survey failed:", error);
-    updateStatus(`Transaction failed: ${error.message}`, "error");
+    const errorMsg = getErrorMessage(error);
+    updateStatus(`Transaction failed: ${errorMsg}`, "error");
 
-    let errorCode = "TRANSACTION_FAILED";
-    if (
-      error.message?.includes("rejected") ||
-      error.message?.includes("refunded")
-    ) {
-      errorCode = "USER_REJECTED";
-    } else if (error.message?.includes("insufficient")) {
-      errorCode = "INSUFFICIENT_FUNDS";
-    } else if (error.message?.includes("not connected")) {
-      errorCode = "WALLET_NOT_CONNECTED";
-    } else if (error.message?.includes("Brand not found")) {
-      errorCode = "INVALID_BRAND";
-    }
-
-    throw { code: errorCode, message: error.message };
+    throw { code: "TRANSACTION_FAILED", message: errorMsg };
   }
 }
 
@@ -542,17 +561,10 @@ async function claimRewards({ surveyId, messages, denom, totalAmount }) {
     };
   } catch (error) {
     console.error("[Agoric Sandbox] Claim rewards failed:", error);
-    updateStatus(`Claim failed: ${error.message}`, "error");
+    const errorMsg = getErrorMessage(error);
+    updateStatus(`Claim failed: ${errorMsg}`, "error");
 
-    let errorCode = "CLAIM_FAILED";
-    if (
-      error.message?.includes("rejected") ||
-      error.message?.includes("refunded")
-    ) {
-      errorCode = "USER_REJECTED";
-    }
-
-    throw { code: errorCode, message: error.message };
+    throw { code: "CLAIM_FAILED", message: errorMsg };
   }
 }
 
@@ -597,7 +609,9 @@ async function initialize() {
  */
 window.addEventListener("message", async (event) => {
   // TODO: Add origin validation in production
+
   // const allowedOrigins = ['https://yourdomain.com', 'http://localhost:3000'];
+
   // if (!allowedOrigins.includes(event.origin)) {
   //   console.error('[Agoric Sandbox] Invalid origin:', event.origin);
   //   return;

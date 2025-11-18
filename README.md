@@ -1,208 +1,48 @@
 # Agoric Iframe Sandbox
 
-A standalone, isolated iframe package for Agoric blockchain integration. This package runs all Agoric SDK code in a sandboxed environment, preventing dependency conflicts with your main application.
+An isolated iframe component for the QSTN application that handles all Agoric blockchain interactions. This sandbox runs in a separate domain to prevent SES (Secure EcmaScript) lockdown conflicts with the main QSTN frontend.
 
-## Features
+## Purpose
 
-- **Zero Dependency Conflicts**: All Agoric dependencies are isolated
-- **Standalone Bundle**: Single HTML file with all JS bundled
-- **SES Lockdown Applied**: Hardens JavaScript built-ins before any Agoric code runs
-- **Safe Isolation**: SES runs in iframe, preventing conflicts with main app
-- **Simple Integration**: Drop-in iframe solution
-- **Multiple Deployment Options**: npm package, CDN, or direct file usage
+The QSTN main application requires interaction with the Agoric blockchain for survey funding and reward distribution. However, the Agoric SDK applies SES lockdown, which hardens JavaScript built-ins and conflicts with React and other dependencies in the main app. This sandbox solves that problem by isolating all Agoric code in a cross-origin iframe.
 
-## Quick Start
+## Architecture
 
-### Option 1: Install as NPM Package
+The sandbox is deployed to Vercel as a separate application and loaded by the QSTN frontend via iframe. Communication between the main app and sandbox occurs through the PostMessage API.
 
-```bash
-npm install @qstn/agoric-iframe-sandbox
-# or
-yarn add @qstn/agoric-iframe-sandbox
-```
+**Main App**: `https://qstn.us` (or localhost:3000)
+**Sandbox**: `https://agoric-sandbox.vercel.app` (separate deployment)
 
-Then copy the built iframe to your public directory:
+This cross-origin isolation ensures:
 
-```bash
-cp node_modules/@qstn/agoric-iframe-sandbox/dist/agoric-sandbox.html public/
-```
+- SES lockdown only affects the iframe environment
+- React and other dependencies in the main app remain unaffected
+- Secure message passing between contexts
 
-### Option 2: Build from Source
+## Deployment
 
-```bash
-git clone <repository>
-cd agoric-iframe-sandbox
-npm install
-npm run build
-```
+The sandbox is deployed to Vercel:
 
-The built files will be in `dist/`:
-- `agoric-sandbox.html` - The iframe HTML file
-- `agoric-sandbox.[hash].js` - The bundled JavaScript (referenced by HTML)
-
-### Option 3: Use from CDN (jsDelivr + GitHub)
-
-```bash
-# After building and pushing to GitHub, use jsDelivr CDN
-# URL format: https://cdn.jsdelivr.net/gh/user/repo@version/file
-
-# Example: Load from a specific release/tag
-https://cdn.jsdelivr.net/gh/qstn/agoric-iframe-sandbox@v1.0.0/dist/agoric-sandbox.html
-
-# Or from a branch
-https://cdn.jsdelivr.net/gh/qstn/agoric-iframe-sandbox@main/dist/agoric-sandbox.html
-```
-
-Configure in your main app:
-```bash
-# .env
-REACT_APP_AGORIC_IFRAME_URL=https://cdn.jsdelivr.net/gh/qstn/agoric-iframe-sandbox@v1.0.0/dist/agoric-sandbox.html
-```
-
-## Usage in Your App
-
-### 1. Add the iframe to your public directory
-
-Copy `dist/agoric-sandbox.html` to your app's public folder.
-
-### 2. Use the iframe handler
-
-The parent app communicates with the iframe via postMessage:
-
-```typescript
-import { useAgoric } from './hooks/use-agoric';
-
-function PaymentButton() {
-  const { fundSurvey, isConnected } = useAgoric();
-
-  const handlePay = async () => {
-    try {
-      const result = await fundSurvey({
-        surveyId: 'survey-123',
-        amount: '1000000',
-        denom: 'ubld'
-      });
-      console.log('Payment successful:', result.txHash);
-    } catch (err) {
-      console.error('Payment failed:', err);
-    }
-  };
-
-  return <button onClick={handlePay}>Pay with Agoric</button>;
-}
-```
-
-## API
-
-The iframe responds to these message types:
-
-### `CONNECT_WALLET`
-Connect to Keplr wallet.
-
-**Request:**
-```javascript
-{ type: 'CONNECT_WALLET', id: 'unique-id' }
-```
-
-**Response:**
-```javascript
-{
-  type: 'AGORIC_RESPONSE',
-  id: 'unique-id',
-  success: true,
-  data: { address: 'agoric1...' }
-}
-```
-
-### `FUND_SURVEY`
-Fund a survey with tokens.
-
-**Request:**
-```javascript
-{
-  type: 'FUND_SURVEY',
-  id: 'unique-id',
-  data: {
-    surveyId: 'survey-123',
-    amount: '1000000',
-    denom: 'ubld'
-  }
-}
-```
-
-**Response:**
-```javascript
-{
-  type: 'AGORIC_RESPONSE',
-  id: 'unique-id',
-  success: true,
-  data: {
-    success: true,
-    txHash: '0x...',
-    height: 12345
-  }
-}
-```
-
-### `CLAIM_REWARDS`
-Claim rewards from a survey.
-
-**Request:**
-```javascript
-{
-  type: 'CLAIM_REWARDS',
-  id: 'unique-id',
-  data: {
-    surveyId: 'survey-123',
-    userId: 'user-456'
-  }
-}
-```
-
-### `GET_STATUS`
-Get current connection status.
-
-**Request:**
-```javascript
-{ type: 'GET_STATUS', id: 'unique-id' }
-```
-
-**Response:**
-```javascript
-{
-  type: 'AGORIC_RESPONSE',
-  id: 'unique-id',
-  success: true,
-  data: {
-    initialized: true,
-    connected: true,
-    address: 'agoric1...',
-    hasBrands: true,
-    brandsAvailable: ['BLD', 'IST']
-  }
-}
-```
-
-## Development
-
-### Build for production
 ```bash
 npm run build
+vercel --prod
 ```
 
-### Watch mode (rebuilds on changes)
+Build output in `dist/`:
+
+- `agoric-sandbox.html` - Entry point
+- `agoric-sandbox.[hash].js` - Bundled JavaScript
+
+The QSTN main app references the deployed URL in its environment configuration:
+
 ```bash
-npm run watch
+# qstn-v1-frontend/.env
+REACT_APP_AGORIC_IFRAME_URL=https://agoric-sandbox.vercel.app/agoric-sandbox.html
 ```
 
-### Dev server (opens browser with iframe)
-```bash
-npm run dev
-```
+## Network Configuration
 
-## Configuration
-
-Edit `src/index.js` to change network configuration:
+The sandbox connects to the Agoric devnet:
 
 ```javascript
 const CONFIG = {
@@ -213,85 +53,239 @@ const CONFIG = {
 };
 ```
 
-## Customization
+## Contract Integration
 
-### Add Custom Contract Interactions
+The sandbox watches for the `qstnRouterV1` contract instance from published chain state and uses the `makeSendTransactionInvitation` public invitation maker for all contract interactions.
 
-Edit the `fundSurvey` and `claimRewards` functions in `src/index.js`:
+## API
+
+The QSTN main app sends messages to the iframe using these message types:
+
+### CONNECT_WALLET
+
+Establishes connection to the user's Keplr wallet.
 
 ```javascript
-async function fundSurvey({ surveyId, amount, denom }) {
-  // Your custom contract logic here
-  const invitationSpec = {
-    source: "contract",
-    instance: YOUR_CONTRACT_INSTANCE,
-    publicInvitationMaker: "yourInvitationMaker",
-  };
+// Main app sends
+{ type: 'CONNECT_WALLET', id: 'request-id' }
 
-  // ... rest of implementation
+// Sandbox responds
+{
+  type: 'AGORIC_RESPONSE',
+  id: 'request-id',
+  success: true,
+  data: { address: 'agoric1...' }
 }
 ```
 
-## Bundle Size
+### SIGN_DATA
 
-- **Total bundle**: ~3-4 MB (uncompressed), ~800 KB (gzipped)
-- **Main dependencies**: @agoric/web-components, @agoric/rpc, ses
+Signs arbitrary data using ADR-036 Amino format.
 
-The large bundle size is due to the Agoric SDK. The bundle is only loaded when the iframe is created (lazy loading recommended).
+```javascript
+// Main app sends
+{
+  type: 'SIGN_DATA',
+  id: 'request-id',
+  data: { data: 'message-to-sign' }
+}
 
-## Browser Support
+// Sandbox responds
+{
+  type: 'AGORIC_RESPONSE',
+  id: 'request-id',
+  success: true,
+  data: {
+    signedData: { /* SignDoc */ },
+    signature: { /* Signature */ }
+  }
+}
+```
 
-- Chrome/Edge: ✅ Latest 2 versions
-- Firefox: ✅ Latest 2 versions
-- Safari: ✅ Version 12+
-- Mobile: ⚠️ Limited (Keplr extension required)
+### FUND_SURVEY
+
+Creates a smart wallet offer to fund a survey contract.
+
+```javascript
+// Main app sends
+{
+  type: 'FUND_SURVEY',
+  id: 'request-id',
+  data: {
+    surveyId: 'survey-123',
+    messages: [/* cosmos messages */],
+    denom: 'ubld',
+    totalAmount: '1000000'
+  }
+}
+
+// Sandbox responds
+{
+  type: 'AGORIC_RESPONSE',
+  id: 'request-id',
+  success: true,
+  data: {
+    success: true,
+    offerId: 'offer-id',
+    txHash: '0x...',
+    height: 0
+  }
+}
+```
+
+### CLAIM_REWARDS
+
+Creates a smart wallet offer to claim survey rewards.
+
+```javascript
+// Main app sends
+{
+  type: 'CLAIM_REWARDS',
+  id: 'request-id',
+  data: {
+    surveyId: 'survey-123',
+    messages: [/* cosmos messages */],
+    denom: 'ubld',
+    totalAmount: '1000000'
+  }
+}
+
+// Sandbox responds
+{
+  type: 'AGORIC_RESPONSE',
+  id: 'request-id',
+  success: true,
+  data: {
+    success: true,
+    offerId: 'offer-id',
+    txHash: '0x...',
+    height: 0
+  }
+}
+```
+
+### GET_STATUS
+
+Returns the current state of the sandbox.
+
+```javascript
+// Main app sends
+{ type: 'GET_STATUS', id: 'request-id' }
+
+// Sandbox responds
+{
+  type: 'AGORIC_RESPONSE',
+  id: 'request-id',
+  success: true,
+  data: {
+    initialized: true,
+    connected: true,
+    address: 'agoric1...',
+    hasBrands: true,
+    hasInstance: true,
+    brandsAvailable: ['BLD', 'IST']
+  }
+}
+```
+
+### Error Responses
+
+Failed operations return error responses:
+
+```javascript
+{
+  type: 'AGORIC_RESPONSE',
+  id: 'request-id',
+  success: false,
+  error: {
+    code: 'ERROR_CODE',
+    message: 'Human-readable error message'
+  }
+}
+```
+
+**Error Codes:**
+
+- `KEPLR_NOT_INSTALLED` - Keplr extension not found
+- `CONNECTION_FAILED` - Wallet connection failed
+- `WALLET_NOT_CONNECTED` - Operation requires connected wallet
+- `SIGNING_FAILED` - Data signing failed
+- `TRANSACTION_FAILED` - Contract interaction failed
+- `USER_REJECTED` - User rejected the transaction
+- `INSUFFICIENT_FUNDS` - Insufficient balance for transaction
+- `INVALID_BRAND` - Token brand not found in chain state
+
+## Initialization Sequence
+
+When loaded, the sandbox:
+
+1. Applies SES lockdown before any other code executes
+2. Initializes the chain storage watcher and connects to Agoric REST API
+3. Watches for contract instances and token brands in published chain state
+4. Sends `AGORIC_READY` message to the parent window
+5. Waits for `CONNECT_WALLET` message from the QSTN main app
+6. After wallet connection, monitors wallet state for offer updates
 
 ## Security
 
-### Origin Validation
+The sandbox currently accepts messages from any origin. For production, origin validation is implemented in the main app's iframe handler to ensure only the QSTN frontend can communicate with the sandbox.
 
-In production, add origin validation to `src/index.js`:
-
-```javascript
-window.addEventListener("message", async event => {
-  const allowedOrigins = ['https://yourdomain.com'];
-  if (!allowedOrigins.includes(event.origin)) {
-    console.error('[Agoric Sandbox] Invalid origin:', event.origin);
-    return;
-  }
-  // ... rest of handler
-});
-```
-
-### Content Security Policy
-
-Ensure your CSP allows same-origin iframes:
+The parent application's Content Security Policy allows the sandbox iframe:
 
 ```
-Content-Security-Policy: frame-src 'self';
+Content-Security-Policy: frame-src https://agoric-sandbox.vercel.app;
 ```
 
-## Troubleshooting
+## Development
 
-### "Keplr not found"
-- Install Keplr browser extension: https://www.keplr.app/
+**Production Build:**
 
-### "Sandbox failed to load"
-- Check browser console for errors
-- Verify the iframe HTML file is accessible
-- Check network tab for failed requests
+```bash
+npm run build
+```
 
-### Bundle size too large
-- The Agoric SDK is large (~3-4 MB)
-- Consider lazy loading the iframe only when needed
-- Use CDN with caching for production
+**Watch Mode:**
+
+```bash
+npm run watch
+```
+
+**Development Server:**
+
+```bash
+npm run dev  # Opens localhost:8080
+```
+
+## Dependencies
+
+**Runtime:**
+
+- `@agoric/web-components` - Wallet connection utilities
+- `@agoric/rpc` - Chain storage watcher
+- `ses` - Secure EcmaScript lockdown
+- `@cosmjs/amino` - Transaction signing
+- `buffer` - Node.js Buffer polyfill
+
+**Build:**
+
+- `webpack` - Module bundler
+- `babel-loader` - JavaScript transpilation
+- `html-webpack-plugin` - HTML generation
+
+## Bundle Size
+
+- Uncompressed: ~3-4 MB
+- Gzipped: ~800 KB
+
+The bundle is large due to the Agoric SDK. The QSTN main app lazy-loads the iframe only when blockchain interactions are needed.
+
+## Browser Compatibility
+
+- Chrome/Edge: Latest 2 versions
+- Firefox: Latest 2 versions
+- Safari: Version 12+
+- Mobile: Limited (requires Keplr extension)
 
 ## License
 
 MIT
-
-## Support
-
-For issues and questions:
-- GitHub Issues: <repository-url>
-- Documentation: See parent app docs
