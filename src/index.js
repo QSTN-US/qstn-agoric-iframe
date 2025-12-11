@@ -75,7 +75,6 @@ export const networkConfigs = {
 function getConfig(network) {
   // Normalize to default if undefined/null/empty
   const normalizedNetwork = network || "devnet";
-
   return networkConfigs[normalizedNetwork] || networkConfigs.devnet;
 }
 
@@ -93,6 +92,8 @@ const state = {
   currentWalletRecord: null,
   brands: null,
   contractInstance: null,
+  accountInvitation: null,
+  hasAccount: false,
   isInitialized: false,
 };
 
@@ -221,7 +222,9 @@ async function connectWallet({ network } = {}) {
 
     // CRITICAL: Check if watcher exists first!
     if (!state.watcher || targetNetwork !== state.network) {
-      console.log("[Agoric Sandbox] Watcher not initialized or network changed, setting up...");
+      console.log(
+        "[Agoric Sandbox] Watcher not initialized or network changed, setting up..."
+      );
       await setupWatcher({ network: targetNetwork });
       // Wait a bit for watcher to sync initial data
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -254,6 +257,28 @@ async function connectWallet({ network } = {}) {
     updateWalletStatus(
       `${wallet.address.slice(0, 12)}...${wallet.address.slice(-6)}`
     );
+
+    // Start watching wallet to get currentWalletRecord
+    watchWallet();
+
+    // Wait for wallet record to be available
+    console.log("[Agoric Sandbox] Waiting for wallet record...");
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Check if account already exists and store in state
+    const existingAccount = getAccountInvitation();
+    if (existingAccount) {
+      console.log(
+        "[Agoric Sandbox] Found existing account:",
+        existingAccount.id
+      );
+      state.accountInvitation = existingAccount;
+      state.hasAccount = true;
+    } else {
+      console.log(
+        "[Agoric Sandbox] No existing account found - will be created on first action"
+      );
+    }
 
     return { address: wallet.address };
   } catch (error) {
@@ -310,6 +335,51 @@ function watchWallet() {
 }
 
 /**
+ * Get the QSTN account invitation from wallet records
+ * Checks if user has already created a QSTN account
+ *
+ * @returns {{ id: string, invitation: any } | null} Account invitation details or null
+ */
+function getAccountInvitation() {
+  if (!state.currentWalletRecord) {
+    console.log("[Agoric Sandbox] No wallet record available");
+    return null;
+  }
+
+  console.log("[Agoric Sandbox] Checking for existing account invitation...");
+
+  const invitation = state.currentWalletRecord.offerToUsedInvitation
+    .filter((inv) => {
+      const value = inv[1]?.value;
+      if (Array.isArray(value) && value[0]) {
+        const description = value[0].description;
+        console.log(
+          "[Agoric Sandbox] Found invitation with description:",
+          description
+        );
+        return description === "qstnAccountKitInvitation";
+      }
+      return false;
+    })
+    .sort((a, b) => b[0].localeCompare(a[0])) // Sort descending to get latest
+    .at(0); // Get the most recent one
+
+  if (invitation) {
+    console.log(
+      "[Agoric Sandbox] Found existing account invitation:",
+      invitation[0]
+    );
+    return {
+      id: invitation[0],
+      invitation: invitation[1],
+    };
+  }
+
+  console.log("[Agoric Sandbox] No account invitation found");
+  return null;
+}
+
+/**
  * Extract error message from various error formats
  */
 function getErrorMessage(error) {
@@ -345,13 +415,14 @@ function getErrorMessage(error) {
  * Make an offer using the smart wallet
  *
  * NOTE: This is the core function for interacting with Agoric smart contracts
+ * Automatically handles proposal creation, account routing, and state management
+ *
+ * @param {Object} params
+ * @param {Array} params.messages - Transaction messages
+ * @param {string} params.totalAmount - Total amount to send
+ * @param {string} params.denom - Token denomination (e.g., "ubld")
  */
-async function makeOffer({ invitationSpec, proposal, offerArgs = {} }) {
-  console.log("[Agoric Sandbox] Making offer:", {
-    invitationSpec,
-    proposal,
-    offerArgs,
-  });
+async function makeOffer({ messages, totalAmount, denom }) {
   // Validate state
   if (!state.wallet) {
     throw new Error("Wallet not connected. Call connectWallet() first.");
@@ -367,37 +438,127 @@ async function makeOffer({ invitationSpec, proposal, offerArgs = {} }) {
     throw new Error("Brands not loaded. Wait for chain storage to sync.");
   }
 
+  // Get brand and create proposal
+  const brandKey = denom.toUpperCase() === "UBLD" ? "BLD" : denom.toUpperCase();
+  const brand = state.brands?.[brandKey];
+
+  if (!brand) {
+    throw new Error(
+      `Brand not found for ${brandKey}. Available brands: ${Object.keys(
+        state.brands || {}
+      ).join(", ")}`
+    );
+  }
+
+  console.log("[Agoric Sandbox] Using brand:", brandKey, brand);
+
+  const proposal = {
+    give: {
+      Payment: {
+        brand,
+        value: BigInt(totalAmount),
+      },
+    },
+    want: {},
+  };
+
+  // Handle automatic account routing
+  let invitationSpec;
+  let offerArgs;
+  let accountWasCreated = false;
+
+  // Check if account exists - get fresh invitation each time
+  const accountInvitation = getAccountInvitation();
+
+  if (accountInvitation) {
+    // ROUTE A: Account exists - use continuing invitation
+    console.log(
+      "[Agoric Sandbox] Using existing account:",
+      accountInvitation.id
+    );
+
+    invitationSpec = {
+      source: "continuing",
+      previousOffer: accountInvitation.id,
+      invitationMakerName: "makeTransactionInvitation",
+      invitationArgs: harden(["sendTransactions", [{ messages }]]),
+    };
+    offerArgs = {}; // Args are in invitationArgs
+  } else {
+    // ROUTE B: No account - use public invitation (creates account + performs action)
+    console.log(
+      "[Agoric Sandbox] No account found - will create account and perform action in one transaction"
+    );
+
+    invitationSpec = {
+      source: "contract",
+      instance: state.contractInstance,
+      publicInvitationMaker: "createQstnAccountKit",
+    };
+    offerArgs = { messages }; // Pass messages in offerArgs
+    accountWasCreated = true;
+  }
+
+  console.log("[Agoric Sandbox] Making offer:", {
+    invitationSpec,
+    proposal,
+    offerArgs,
+  });
+
   return new Promise((resolve, reject) => {
     try {
-      state.wallet.makeOffer(invitationSpec, proposal, offerArgs, (update) => {
-        console.log("[Agoric Sandbox] Offer status update:", update);
+      state.wallet.makeOffer(
+        invitationSpec,
+        proposal,
+        offerArgs,
+        async (update) => {
+          console.log("[Agoric Sandbox] Offer status update:", update);
 
-        switch (update.status) {
-          case "error": {
-            const errorMsg = getErrorMessage(update.data);
-            console.error("[Agoric Sandbox] Offer error:", errorMsg);
-            reject(new Error(errorMsg));
-            break;
+          switch (update.status) {
+            case "error": {
+              const errorMsg = getErrorMessage(update.data);
+              console.error("[Agoric Sandbox] Offer error:", errorMsg);
+              reject(new Error(errorMsg));
+              break;
+            }
+            case "accepted":
+              console.log("[Agoric Sandbox] Offer accepted!", update);
+
+              // If account was just created, update state
+              if (accountWasCreated) {
+                console.log(
+                  "[Agoric Sandbox] Account created, fetching invitation..."
+                );
+                await new Promise((res) => setTimeout(res, 2000));
+                const newAccountInvitation = getAccountInvitation();
+                if (newAccountInvitation) {
+                  state.accountInvitation = newAccountInvitation;
+                  state.hasAccount = true;
+                  console.log(
+                    "[Agoric Sandbox] Account invitation stored:",
+                    newAccountInvitation.id
+                  );
+                }
+              }
+
+              resolve(update);
+              break;
+
+            case "refunded":
+              console.warn("[Agoric Sandbox] Offer refunded");
+              reject(new Error("Offer was refunded (wants not satisfied)"));
+              break;
+
+            case "seated":
+              console.log("[Agoric Sandbox] Offer seated (pending)");
+              resolve(update);
+              break;
+
+            default:
+              console.log("[Agoric Sandbox] Offer status:", update.status);
           }
-          case "accepted":
-            console.log("[Agoric Sandbox] Offer accepted!", update);
-            resolve(update);
-            break;
-
-          case "refunded":
-            console.warn("[Agoric Sandbox] Offer refunded");
-            reject(new Error("Offer was refunded (wants not satisfied)"));
-            break;
-
-          case "seated":
-            console.log("[Agoric Sandbox] Offer seated (pending)");
-            resolve(update);
-            break;
-
-          default:
-            console.log("[Agoric Sandbox] Offer status:", update.status);
         }
-      });
+      );
     } catch (error) {
       console.error("[Agoric Sandbox] makeOffer failed:", error);
       reject(error);
@@ -443,7 +604,6 @@ async function signData({ data }) {
     // Ensure wallet is connected
     if (!state.wallet) {
       await connectWallet({ network: state.network });
-      watchWallet();
     }
 
     const signDoc = await makeADR036AminoDoc(data, state.wallet.address);
@@ -484,52 +644,13 @@ async function fundSurvey({ surveyId, messages, denom, totalAmount }) {
     // Ensure wallet is connected
     if (!state.wallet) {
       await connectWallet();
-      watchWallet();
     }
 
-    // Get brand for the token
-    const brandKey =
-      denom.toUpperCase() === "UBLD" ? "BLD" : denom.toUpperCase();
-    const brand = state.brands?.[brandKey];
-
-    if (!brand) {
-      throw new Error(
-        `Brand not found for ${brandKey}. Available brands: ${Object.keys(
-          state.brands || {}
-        ).join(", ")}`
-      );
-    }
-
-    console.log("[Agoric Sandbox] Using brand:", brandKey, brand);
-
-    // TODO: Replace with your actual contract invitation spec
-    const invitationSpec = {
-      source: "contract",
-      instance: state.contractInstance,
-      publicInvitationMaker: "makeSendTransactionInvitation",
-    };
-
-    // Create proposal with Amount
-    const proposal = {
-      give: {
-        Payment: {
-          brand,
-          value: BigInt(totalAmount),
-        },
-      },
-      want: {},
-    };
-
-    // Contract-specific arguments
-    const offerArgs = {
-      messages,
-    };
-
-    // Make the offer
+    // Make the offer - makeOffer handles everything (brand, proposal, account routing)
     const result = await makeOffer({
-      invitationSpec,
-      proposal,
-      offerArgs,
+      messages,
+      totalAmount,
+      denom,
     });
 
     updateStatus(`Survey funded! Offer accepted.`, "success");
@@ -565,47 +686,13 @@ async function claimRewards({ surveyId, messages, denom, totalAmount }) {
     // Ensure wallet is connected
     if (!state.wallet) {
       await connectWallet();
-      watchWallet();
     }
 
-    // Get brand for the token
-    const brandKey =
-      denom.toUpperCase() === "UBLD" ? "BLD" : denom.toUpperCase();
-    const brand = state.brands?.[brandKey];
-
-    if (!brand) {
-      throw new Error(
-        `Brand not found for ${brandKey}. Available brands: ${Object.keys(
-          state.brands || {}
-        ).join(", ")}`
-      );
-    }
-
-    // TODO: Implement your actual claim rewards contract interaction
-    const invitationSpec = {
-      source: "contract",
-      instance: state.contractInstance,
-      publicInvitationMaker: "makeSendTransactionInvitation",
-    };
-
-    const proposal = {
-      give: {
-        Payment: {
-          brand,
-          value: BigInt(totalAmount),
-        },
-      },
-      want: {},
-    };
-
-    const offerArgs = {
-      messages,
-    };
-
+    // Make the offer - makeOffer handles everything (brand, proposal, account routing)
     const result = await makeOffer({
-      invitationSpec,
-      proposal,
-      offerArgs,
+      messages,
+      totalAmount,
+      denom,
     });
 
     updateStatus(`Rewards claimed!`, "success");
@@ -690,7 +777,6 @@ window.addEventListener("message", async (event) => {
     switch (type) {
       case "CONNECT_WALLET":
         result = await connectWallet(data);
-        watchWallet();
         break;
 
       case "SIGN_DATA":
@@ -712,6 +798,8 @@ window.addEventListener("message", async (event) => {
           address: state.wallet?.address || null,
           hasBrands: !!state.brands,
           hasInstance: !!state.contractInstance,
+          hasAccount: state.hasAccount,
+          accountInvitationId: state.accountInvitation?.id || null,
           brandsAvailable: state.brands ? Object.keys(state.brands) : [],
           network: state.network,
         };
