@@ -59,7 +59,7 @@ export const networkConfigs = {
     NETWORK_CONFIG_HREF: "https://emerynet.agoric.net/network-config",
     REST_ENDPOINT: "https://emerynet.api.agoric.net",
   },
-  localhost: {
+  local: {
     CHAIN_ID: "agoriclocal",
     RPC_ENDPOINT: "http://localhost:26657",
     NETWORK_CONFIG_HREF: "https://local.agoric.net/network-config",
@@ -77,6 +77,27 @@ function getConfig(network) {
   const normalizedNetwork = network || "devnet";
   return networkConfigs[normalizedNetwork] || networkConfigs.devnet;
 }
+
+/**
+ * @typedef {Object} TransactionData
+ * @property {Object} txn - Transaction details
+ * @property {string} txn.transactionHash - Transaction hash
+ * @property {number} [txn.code] - Transaction code (0 = success)
+ * @property {number} [txn.height] - Block height
+ * @property {number} [txn.txIndex] - Transaction index in block
+ * @property {string} [txn.rawLog] - Raw transaction log
+ * @property {bigint} [txn.gasUsed] - Gas used
+ * @property {bigint} [txn.gasWanted] - Gas wanted
+ * @property {Array} [txn.events] - Transaction events
+ * @property {Array} [txn.msgResponses] - Message responses
+ * @property {number|string} offerId - Offer ID
+ */
+
+/**
+ * @typedef {Object} OfferResult
+ * @property {string} status - Offer status ("accepted", "seated", "error", "refunded")
+ * @property {TransactionData} [data] - Transaction data (if available)
+ */
 
 // Brands
 const BLD = {
@@ -412,6 +433,70 @@ function getErrorMessage(error) {
 }
 
 /**
+ * Get the last transaction for the current wallet address from Cosmos API
+ * This is used as a fallback when offer status updates don't include transaction data
+ *
+ * @returns {Promise<TransactionData|null>} Transaction data or null if not found
+ */
+async function getLastTransaction() {
+  try {
+    if (!state.wallet || !state.network) {
+      console.warn(
+        "[Agoric Sandbox] Cannot fetch transaction: wallet or network not initialized"
+      );
+      return null;
+    }
+
+    const config = getConfig(state.network);
+    const address = state.wallet.address;
+
+    const eventsQuery = `message.sender='${address}'`;
+    const url = `${
+      config.REST_ENDPOINT
+    }/cosmos/tx/v1beta1/txs?events=${encodeURIComponent(
+      eventsQuery
+    )}&order_by=ORDER_BY_DESC&limit=1`;
+
+    console.log("[Agoric Sandbox] Fetching last transaction from:", url);
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(
+        "[Agoric Sandbox] Failed to fetch transaction:",
+        response.status
+      );
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.tx_responses || data.tx_responses.length === 0) {
+      console.log("[Agoric Sandbox] No transactions found for address");
+      return null;
+    }
+
+    const txResponse = data.tx_responses[0];
+
+    // Extract only the essential data: txHash and offerId
+    const txData = {
+      txn: {
+        transactionHash: txResponse.txhash || "",
+      },
+      offerId: Date.now(), // Fallback offerId since we can't determine it from the transaction
+    };
+
+    console.log(
+      "[Agoric Sandbox] Fetched last transaction:",
+      txData.txn.transactionHash
+    );
+    return txData;
+  } catch (error) {
+    console.error("[Agoric Sandbox] Error fetching last transaction:", error);
+    return null;
+  }
+}
+
+/**
  * Make an offer using the smart wallet
  *
  * NOTE: This is the core function for interacting with Agoric smart contracts
@@ -421,6 +506,7 @@ function getErrorMessage(error) {
  * @param {Array} params.messages - Transaction messages
  * @param {string} params.totalAmount - Total amount to send
  * @param {string} params.denom - Token denomination (e.g., "ubld")
+ * @returns {Promise<OfferResult>} Offer result with status and transaction data
  */
 async function makeOffer({ messages, totalAmount, denom }) {
   // Validate state
@@ -450,17 +536,21 @@ async function makeOffer({ messages, totalAmount, denom }) {
     );
   }
 
+  console.log("here");
+
   console.log("[Agoric Sandbox] Using brand:", brandKey, brand);
 
   const proposal = {
     give: {
-      Payment: {
+      Deposit: {
         brand,
         value: BigInt(totalAmount),
       },
     },
     want: {},
   };
+
+  console.log("[Agoric Sandbox]", proposal);
 
   // Handle automatic account routing
   let invitationSpec;
@@ -506,6 +596,9 @@ async function makeOffer({ messages, totalAmount, denom }) {
   });
 
   return new Promise((resolve, reject) => {
+    // Store transaction data from seated status
+    let seatedData = null;
+
     try {
       state.wallet.makeOffer(
         invitationSpec,
@@ -521,15 +614,21 @@ async function makeOffer({ messages, totalAmount, denom }) {
               reject(new Error(errorMsg));
               break;
             }
-            case "accepted":
-              console.log("[Agoric Sandbox] Offer accepted!", update);
+            case "seated":
+              console.log("[Agoric Sandbox] Offer seated (pending)");
+              seatedData = update.data;
+              break;
 
-              // If account was just created, update state
+            case "accepted":
+              console.log("[Agoric Sandbox] Offer accepted!");
+
               if (accountWasCreated) {
                 console.log(
                   "[Agoric Sandbox] Account created, fetching invitation..."
                 );
+
                 await new Promise((res) => setTimeout(res, 2000));
+
                 const newAccountInvitation = getAccountInvitation();
                 if (newAccountInvitation) {
                   state.accountInvitation = newAccountInvitation;
@@ -541,17 +640,37 @@ async function makeOffer({ messages, totalAmount, denom }) {
                 }
               }
 
-              resolve(update);
+              // Use seatedData if available, otherwise try update.data, otherwise fetch from API
+              let finalData = seatedData || update.data;
+
+              // If no transaction data available, fetch last transaction from API
+              if (!finalData || !finalData.txn) {
+                console.log(
+                  "[Agoric Sandbox] No transaction data in status updates, fetching from API..."
+                );
+                const apiTxData = await getLastTransaction();
+                if (apiTxData) {
+                  finalData = apiTxData;
+                  console.log(
+                    "[Agoric Sandbox] Using transaction data from API:",
+                    apiTxData.txn.transactionHash
+                  );
+                } else {
+                  console.warn(
+                    "[Agoric Sandbox] Could not fetch transaction data from API"
+                  );
+                }
+              }
+
+              resolve({
+                status: "accepted",
+                data: finalData,
+              });
               break;
 
             case "refunded":
               console.warn("[Agoric Sandbox] Offer refunded");
               reject(new Error("Offer was refunded (wants not satisfied)"));
-              break;
-
-            case "seated":
-              console.log("[Agoric Sandbox] Offer seated (pending)");
-              resolve(update);
               break;
 
             default:
