@@ -151,7 +151,7 @@ function createWatcherHandlers(watcher) {
           console.log("[Agoric Sandbox] Got instances:", instances);
           // Find qstnRouterV1 instance
           state.contractInstance = instances.find(
-            ([name]) => name === "qstnRouterV4"
+            ([name]) => name === "QstnContract"
           )?.[1];
 
           console.log(
