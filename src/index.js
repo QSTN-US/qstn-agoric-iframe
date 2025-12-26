@@ -43,8 +43,8 @@ if (typeof document !== "undefined") {
 export const networkConfigs = {
   mainnet: {
     CHAIN_ID: "agoric-3",
-    RPC_ENDPOINT: "https://agoric-rpc.polkachu.com:443",
-    REST_ENDPOINT: "https://agoric-api.polkachu.com",
+    RPC_ENDPOINT: "https://main-a.rpc.agoric.net/:443",
+    REST_ENDPOINT: "https://main-a.api.agoric.net",
     NETWORK_CONFIG_HREF: "https://followmain.agoric.net/network-config",
   },
   devnet: {
@@ -364,7 +364,7 @@ function watchWallet() {
 function getAccountInvitation() {
   if (!state.currentWalletRecord) {
     console.log("[Agoric Sandbox] No wallet record available");
-    return null;
+    watchWallet();
   }
 
   console.log("[Agoric Sandbox] Checking for existing account invitation...");
