@@ -43,8 +43,8 @@ if (typeof document !== "undefined") {
 export const networkConfigs = {
   mainnet: {
     CHAIN_ID: "agoric-3",
-    RPC_ENDPOINT: "https://followmain.rpc.agoric.net:443",
-    REST_ENDPOINT: "https://followmain.api.agoric.net",
+    RPC_ENDPOINT: "https://agoric-rpc.polkachu.com:443",
+    REST_ENDPOINT: "https://agoric-api.polkachu.com",
     NETWORK_CONFIG_HREF: "https://followmain.agoric.net/network-config",
   },
   devnet: {
@@ -842,14 +842,14 @@ async function initialize() {
     // Setup chain storage watcher
     // This initializes the watcher that will be used by wallet connection
     console.log("[Agoric Sandbox] Setting up watcher...");
-    await setupWatcher({ network: "devnet" });
+    await setupWatcher({ network: "mainnet" });
 
     // Wait for watcher to sync initial data (brands, instances, etc.)
     console.log("[Agoric Sandbox] Waiting for initial chain data sync...");
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     state.isInitialized = true;
-    state.network = "devnet";
+    state.network = "mainnet";
 
     updateStatus("Sandbox ready - waiting for commands", "success");
     console.log("[Agoric Sandbox] Ready to receive messages");
@@ -872,12 +872,10 @@ async function initialize() {
  * Message handler for parent window communication
  */
 window.addEventListener("message", async (event) => {
-  // TODO: Add origin validation in production
-
-  // const allowedOrigins = ['https://yourdomain.com', 'http://localhost:3000'];
+  // const allowedOrigins = ["https://yourdomain.com", "http://localhost:3000"];
 
   // if (!allowedOrigins.includes(event.origin)) {
-  //   console.error('[Agoric Sandbox] Invalid origin:', event.origin);
+  //   console.error("[Agoric Sandbox] Invalid origin:", event.origin);
   //   return;
   // }
 
