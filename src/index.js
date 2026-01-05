@@ -287,7 +287,7 @@ async function connectWallet({ network } = {}) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Check if account already exists and store in state
-    const existingAccount = getAccountInvitation();
+    const existingAccount = await getAccountInvitation();
     if (existingAccount) {
       console.log(
         "[Agoric Sandbox] Found existing account:",
@@ -358,13 +358,32 @@ function watchWallet() {
 /**
  * Get the QSTN account invitation from wallet records
  * Checks if user has already created a QSTN account
+ * Waits for wallet record to be available if not yet populated
  *
- * @returns {{ id: string, invitation: any } | null} Account invitation details or null
+ * @param {number} [maxWaitMs=5000] - Maximum time to wait for wallet record
+ * @returns {Promise<{ id: string, invitation: any } | null>} Account invitation details or null
  */
-function getAccountInvitation() {
+async function getAccountInvitation(maxWaitMs = 5000) {
+  // If wallet record not available, ensure watcher is running and wait for it
   if (!state.currentWalletRecord) {
-    console.log("[Agoric Sandbox] No wallet record available");
+    console.log("[Agoric Sandbox] Wallet record not yet available, waiting...");
     watchWallet();
+
+    // Poll for wallet record with timeout
+    const pollInterval = 500;
+    let waited = 0;
+    while (!state.currentWalletRecord && waited < maxWaitMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      waited += pollInterval;
+    }
+
+    // If still no wallet record after waiting, return null (new wallet with no history)
+    if (!state.currentWalletRecord) {
+      console.log(
+        "[Agoric Sandbox] No wallet record found after waiting - this may be a new wallet"
+      );
+      return null;
+    }
   }
 
   console.log("[Agoric Sandbox] Checking for existing account invitation...");
@@ -558,7 +577,7 @@ async function makeOffer({ messages, totalAmount, denom }) {
   let accountWasCreated = false;
 
   // Check if account exists - get fresh invitation each time
-  const accountInvitation = getAccountInvitation();
+  const accountInvitation = await getAccountInvitation();
 
   if (accountInvitation) {
     // ROUTE A: Account exists - use continuing invitation
@@ -629,7 +648,7 @@ async function makeOffer({ messages, totalAmount, denom }) {
 
                 await new Promise((res) => setTimeout(res, 2000));
 
-                const newAccountInvitation = getAccountInvitation();
+                const newAccountInvitation = await getAccountInvitation();
                 if (newAccountInvitation) {
                   state.accountInvitation = newAccountInvitation;
                   state.hasAccount = true;
