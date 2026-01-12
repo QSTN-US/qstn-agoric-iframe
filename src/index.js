@@ -469,12 +469,11 @@ async function getLastTransaction() {
     const config = getConfig(state.network);
     const address = state.wallet.address;
 
-    const eventsQuery = `message.sender='${address}'`;
     const url = `${
       config.REST_ENDPOINT
-    }/cosmos/tx/v1beta1/txs?events=${encodeURIComponent(
-      eventsQuery
-    )}&order_by=ORDER_BY_DESC&limit=1`;
+    }/cosmos/tx/v1beta1/txs?query=${encodeURIComponent(
+      `message.sender='${address}'`
+    )}&order_by=ORDER_BY_DESC&pagination.limit=1`;
 
     console.log("[Agoric Sandbox] Fetching last transaction from:", url);
 
@@ -496,17 +495,42 @@ async function getLastTransaction() {
 
     const txResponse = data.tx_responses[0];
 
-    // Extract only the essential data: txHash and offerId
+    let offerId = Date.now(); // Fallback
+    try {
+      const spendAction = txResponse.tx?.body?.messages?.[0]?.spend_action;
+      if (spendAction) {
+        // The spend_action contains JSON with the offer id
+        // Format: {"body":"#{\"method\":\"executeOffer\",\"offer\":{\"id\":1767643141199,...}}","slots":[...]}
+        const idMatch = spendAction.match(/"id"\s*:\s*(\d+)/);
+        if (idMatch) {
+          offerId = parseInt(idMatch[1], 10);
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "[Agoric Sandbox] Could not extract offerId from transaction:",
+        e
+      );
+    }
+
     const txData = {
       txn: {
         transactionHash: txResponse.txhash || "",
+        code: txResponse.code,
+        height: parseInt(txResponse.height, 10) || 0,
+        rawLog: txResponse.raw_log || "",
+        gasUsed: BigInt(txResponse.gas_used || 0),
+        gasWanted: BigInt(txResponse.gas_wanted || 0),
+        events: txResponse.events || [],
       },
-      offerId: Date.now(), // Fallback offerId since we can't determine it from the transaction
+      offerId,
     };
 
     console.log(
       "[Agoric Sandbox] Fetched last transaction:",
-      txData.txn.transactionHash
+      txData.txn.transactionHash,
+      "offerId:",
+      txData.offerId
     );
     return txData;
   } catch (error) {
