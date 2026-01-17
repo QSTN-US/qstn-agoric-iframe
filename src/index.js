@@ -833,6 +833,86 @@ async function fundSurvey({ surveyId, messages, denom, totalAmount }) {
 }
 
 /**
+ * Sponsor participant gas fees
+ * Sends tokens from user's wallet to the backend sponsor wallet
+ * This funds the gas for participants to claim their rewards
+ *
+ * @param {Object} params
+ * @param {string} params.destinationAddress - Backend sponsor wallet address
+ * @param {string} params.amount - Amount to send (in smallest unit, e.g., ubld)
+ * @param {string} params.denom - Token denomination (e.g., "ubld")
+ * @returns {Promise<{success: boolean, txHash: string}>}
+ */
+async function sponsorParticipantGas({ destinationAddress, amount, denom }) {
+  try {
+    console.log("[Agoric Sandbox] Sponsoring participant gas:", {
+      destinationAddress,
+      amount,
+      denom,
+    });
+    updateStatus(`Sending gas sponsorship...`, "loading");
+
+    // Ensure wallet is connected
+    if (!state.wallet) {
+      await connectWallet();
+    }
+
+    // Get the signing client from the wallet connection
+    const signingClient = state.wallet.signingClient;
+
+    if (!signingClient) {
+      throw new Error("Signing client not available");
+    }
+
+    // Create bank send message
+    const msg = {
+      typeUrl: "/cosmos.bank.v1beta1.MsgSend",
+      value: {
+        fromAddress: state.wallet.address,
+        toAddress: destinationAddress,
+        amount: [{ denom, amount }],
+      },
+    };
+
+    // Fee for the transaction
+    const fee = {
+      amount: [{ denom: "ubld", amount: "5000" }],
+      gas: "200000",
+    };
+
+    console.log("[Agoric Sandbox] Sending bank transfer:", msg);
+
+    const result = await signingClient.signAndBroadcast(
+      state.wallet.address,
+      [msg],
+      fee,
+      "QSTN Gas Sponsorship"
+    );
+
+    console.log("[Agoric Sandbox] Gas sponsorship result:", result);
+
+    if (result.code !== 0) {
+      throw new Error(
+        `Transaction failed with code ${result.code}: ${result.rawLog}`
+      );
+    }
+
+    updateStatus(`Gas sponsorship sent!`, "success");
+
+    return {
+      success: true,
+      txHash: result.transactionHash,
+    };
+  } catch (error) {
+    console.error("[Agoric Sandbox] Gas sponsorship failed:", error);
+    const errorMsg = getErrorMessage(error);
+    updateStatus(`Gas sponsorship failed: ${errorMsg}`, "error");
+
+    throw { code: "SPONSOR_FAILED", message: errorMsg };
+  }
+}
+
+/**
  * Claim rewards
  *
  * TODO: Replace with your actual contract interaction
@@ -949,6 +1029,10 @@ window.addEventListener("message", async (event) => {
 
       case "CLAIM_REWARDS":
         result = await claimRewards(data);
+        break;
+
+      case "SPONSOR_PARTICIPANT_GAS":
+        result = await sponsorParticipantGas(data);
         break;
 
       case "GET_STATUS":
